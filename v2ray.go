@@ -159,7 +159,7 @@ func RequireFeatures(ctx context.Context, callback interface{}) error {
 // The instance is not started at this point.
 // To ensure V2Ray instance works properly, the config must contain one Dispatcher, one InboundHandlerManager and one OutboundHandlerManager. Other features are optional.
 func New(config *Config) (*Instance, error) {
-	var server = &Instance{ctx: context.Background()}
+	server := &Instance{ctx: context.Background()}
 
 	done, err := initInstanceWithConfig(config, server)
 	if done {
@@ -170,7 +170,7 @@ func New(config *Config) (*Instance, error) {
 }
 
 func NewWithContext(ctx context.Context, config *Config) (*Instance, error) {
-	var server = &Instance{ctx: ctx}
+	server := &Instance{ctx: ctx}
 
 	done, err := initInstanceWithConfig(config, server)
 	if done {
@@ -340,7 +340,6 @@ func (s *Instance) Start() error {
 	}
 
 	newError("V2Ray ", Version(), " started").AtWarning().WriteToLog()
-	newError("Starting 2022, non-VMessAEAD connections will be rejected by default.").AtWarning().WriteToLog()
 
 	return nil
 }
