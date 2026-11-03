@@ -1,6 +1,9 @@
 package v2binding
 
 import (
+	"fmt"
+	"os"
+
 	"google.golang.org/protobuf/types/known/anypb"
 
 	core "github.com/v2fly/v2ray-core/v5"
@@ -12,8 +15,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/app/router"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
-
-	// Initialization
 	_ "github.com/v2fly/v2ray-core/v5/main/distro/all"
 	"github.com/v2fly/v2ray-core/v5/proxy/blackhole"
 	"github.com/v2fly/v2ray-core/v5/proxy/dokodemo"
@@ -22,6 +23,7 @@ import (
 type bindingInstance struct {
 	started  bool
 	instance *core.Instance
+	baseDir  string
 }
 
 var binding bindingInstance
@@ -52,7 +54,7 @@ func (b *bindingInstance) startAPIInstance() {
 				Tag: "api",
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
 					PortRange: net.SinglePortRange(10999),
-					Listen:    net.NewIPOrDomain(net.AnyIP),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 				}),
 				ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
 					Address:  net.NewIPOrDomain(net.LocalHostIP),
@@ -93,5 +95,13 @@ func StartAPIInstance(basedir string) {
 		return
 	}
 	binding.started = true
+	binding.setBaseDir(basedir)
 	binding.startAPIInstance()
+	{
+		err := binding.loadDefaultConfigIfExists()
+		if err != nil {
+			fmt.Println(err)
+			os.WriteFile("last_err.txt", []byte(err.Error()), 0o644)
+		}
+	}
 }

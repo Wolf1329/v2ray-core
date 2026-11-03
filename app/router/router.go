@@ -7,7 +7,6 @@ import (
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
-	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/platform"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
@@ -30,6 +29,7 @@ type Route struct {
 	routing.Context
 	outboundGroupTags []string
 	outboundTag       string
+	sessionAttributes map[string]string
 }
 
 // Init initializes the Router.
@@ -54,8 +54,9 @@ func (r *Router) Init(ctx context.Context, config *Config, d dns.Client, ohm out
 			return err
 		}
 		rr := &Rule{
-			Condition: cond,
-			Tag:       rule.GetTag(),
+			Condition:     cond,
+			Tag:           rule.GetTag(),
+			SetAttributes: rule.GetSetAttribute(),
 		}
 		btag := rule.GetBalancingTag()
 		if len(btag) > 0 {
@@ -81,7 +82,20 @@ func (r *Router) PickRoute(ctx routing.Context) (routing.Route, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Route{Context: ctx, outboundTag: tag}, nil
+	route := &Route{Context: ctx, outboundTag: tag}
+	if len(rule.SetAttributes) > 0 {
+		route.sessionAttributes = make(map[string]string, len(rule.SetAttributes))
+		for _, attr := range rule.SetAttributes {
+			if attr == nil || attr.Key == "" {
+				continue
+			}
+			route.sessionAttributes[attr.Key] = attr.Value
+		}
+		if len(route.sessionAttributes) == 0 {
+			route.sessionAttributes = nil
+		}
+	}
+	return route, nil
 }
 
 func (r *Router) pickRouteInternal(ctx routing.Context) (*Rule, routing.Context, error) {
@@ -139,6 +153,17 @@ func (r *Route) GetOutboundGroupTags() []string {
 // GetOutboundTag implements routing.Route.
 func (r *Route) GetOutboundTag() string {
 	return r.outboundTag
+}
+
+func (r *Route) GetSessionAttributes() map[string]string {
+	if r == nil || len(r.sessionAttributes) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(r.sessionAttributes))
+	for key, value := range r.sessionAttributes {
+		out[key] = value
+	}
+	return out
 }
 
 func init() {
@@ -220,10 +245,9 @@ func init() {
 					if err != nil {
 						return nil, newError("unable to load geodomain").Base(err)
 					}
-					rule.Domain = append(rule.Domain, geo.Domain...)
 				}
 			}
-			{
+			if v.PortList != "" {
 				portList := &cfgcommon.PortList{}
 				err := portList.UnmarshalText(v.PortList)
 				if err != nil {
@@ -231,7 +255,7 @@ func init() {
 				}
 				rule.PortList = portList.Build()
 			}
-			{
+			if v.SourcePortList != "" {
 				portList := &cfgcommon.PortList{}
 				err := portList.UnmarshalText(v.SourcePortList)
 				if err != nil {
@@ -240,12 +264,21 @@ func init() {
 				rule.SourcePortList = portList.Build()
 			}
 			rule.Domain = v.Domain
-			rule.Networks = net.ParseNetworks(v.Networks)
+			rule.GeoDomain = v.GeoDomain
+			rule.Networks = v.Networks.GetNetwork()
 			rule.Protocol = v.Protocol
 			rule.Attributes = v.Attributes
+			rule.SetAttribute = append(rule.SetAttribute, v.SetAttribute...)
 			rule.UserEmail = v.UserEmail
 			rule.InboundTag = v.InboundTag
 			rule.DomainMatcher = v.DomainMatcher
+			switch s := v.TargetTag.(type) {
+			case *SimplifiedRoutingRule_Tag:
+				rule.TargetTag = &RoutingRule_Tag{s.Tag}
+			case *SimplifiedRoutingRule_BalancingTag:
+				rule.TargetTag = &RoutingRule_BalancingTag{s.BalancingTag}
+			}
+			routingRules = append(routingRules, rule)
 		}
 
 		fullConfig := &Config{
